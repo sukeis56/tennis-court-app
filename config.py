@@ -1,5 +1,7 @@
-SCRAPE_INTERVAL_HOURS = 6
+import os
+
 SCRAPE_DAYS_AHEAD = 14
+SCRAPE_HOUR_JST = 7  # 毎朝7時(JST)にスクレイプ
 DB_PATH = "data/tennis.db"
 
 BASE_URL = "https://www.shisetsu.city.yokohama.lg.jp/user/Home"
@@ -8,6 +10,10 @@ DAY_NAMES = ["月", "火", "水", "木", "金", "土", "日"]
 WEEKDAY_MIN_HOUR = 19
 WEEKEND_MIN_HOUR = 0
 BATCH_SIZE = 20
+
+# LINE Messaging API
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+LINE_USER_ID = os.environ.get("LINE_USER_ID", "")
 
 PARKS = {
     "三ツ沢公園":   {"search": "三ツ沢",   "short": "三ツ沢"},

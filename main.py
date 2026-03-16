@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 import config
 import database
 from services.scraper import run_scrape
+from services.line_notify import send_line_notification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ scraper_state = {
 }
 
 
-async def run_scrape_task():
+async def run_scrape_task(notify: bool = False):
     """asyncio.to_thread でスクレイパーを実行し、結果をDB保存"""
     if scraper_state["running"]:
         logger.info("スクレイプ既に実行中、スキップ")
@@ -46,6 +47,10 @@ async def run_scrape_task():
         database.log_scrape_finish(log_id, "success", len(slots))
         scraper_state["last_run"] = datetime.now(JST)
         logger.info("スクレイプ完了: %d件", len(slots))
+
+        # LINE通知
+        if notify:
+            await send_line_notification(slots)
     except Exception as e:
         logger.error("スクレイプ失敗: %s", e, exc_info=True)
         database.log_scrape_finish(log_id, "error", error_message=str(e))
@@ -53,17 +58,34 @@ async def run_scrape_task():
         scraper_state["running"] = False
 
 
+def _seconds_until_next_run() -> float:
+    """次の実行時刻(JST 7:00)までの秒数を計算"""
+    now = datetime.now(JST)
+    target = now.replace(hour=config.SCRAPE_HOUR_JST, minute=0, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    wait = (target - now).total_seconds()
+    logger.info("次回スクレイプ: %s (あと%.0f秒)", target.strftime("%Y-%m-%d %H:%M JST"), wait)
+    return wait
+
+
 async def scheduled_scrape_loop():
-    """定期スクレイプループ"""
-    interval = config.SCRAPE_INTERVAL_HOURS * 3600
-    # 初回は30秒後に開始
+    """毎朝7時(JST)にスクレイプ + LINE通知"""
+    # 初回: 起動30秒後に実行（通知なし）
     await asyncio.sleep(30)
+    try:
+        await run_scrape_task(notify=False)
+    except Exception as e:
+        logger.error("初回スクレイプでエラー: %s", e)
+
+    # 以降は毎朝7時に実行（通知あり）
     while True:
+        wait = _seconds_until_next_run()
+        await asyncio.sleep(wait)
         try:
-            await run_scrape_task()
+            await run_scrape_task(notify=True)
         except Exception as e:
             logger.error("定期スクレイプでエラー: %s", e)
-        await asyncio.sleep(interval)
 
 
 @app.on_event("startup")
