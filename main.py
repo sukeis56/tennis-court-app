@@ -193,13 +193,21 @@ async def day_detail(request: Request, date_str: str, park: str = ""):
 @app.post("/scrape", response_class=HTMLResponse)
 async def manual_scrape(request: Request):
     if not scraper_state["running"]:
-        asyncio.create_task(run_scrape_task())
+        asyncio.create_task(run_scrape_task(notify=True))
     return templates.TemplateResponse("partials/status_bar.html", {
         "request": request,
         "last_scrape": database.get_last_scrape(),
         "scraper_running": True,
         "total_slots": database.get_total_slot_count(),
     })
+
+
+# --- LINE通知テスト ---
+@app.post("/test-notify", response_class=HTMLResponse)
+async def test_notify(request: Request):
+    slots = [{"park": "テスト公園", "date": "2026-03-17", "day_of_week": "火", "court": "テニスコート1", "time": "9:00-11:00"}]
+    await send_line_notification(slots)
+    return HTMLResponse("<p>テスト通知を送信しました</p>")
 
 
 # --- ステータス ---
