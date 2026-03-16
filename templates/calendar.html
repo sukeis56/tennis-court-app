@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- ステータスバー -->
+<div id="status-bar" hx-get="/status" hx-trigger="{% if scraper_running %}every 5s{% else %}none{% endif %}" hx-swap="outerHTML">
+    {% include "partials/status_bar.html" %}
+</div>
+
+<!-- 施設フィルター -->
+<div class="park-filters">
+    {% for park_name, park_info in parks.items() %}
+        <button class="btn btn-filter {% if not selected_parks or park_name in selected_parks %}active{% endif %}"
+                onclick="togglePark('{{ park_name }}')">
+            {{ park_info.short }}
+        </button>
+    {% endfor %}
+</div>
+
+<!-- 月ナビゲーション -->
+<div class="calendar-nav">
+    <a href="/?year={{ prev_year }}&month={{ prev_month }}" class="btn btn-nav">&lt;</a>
+    <div class="calendar-nav-center">
+        <h2>{{ year }}年 {{ month }}月</h2>
+        {% if not is_current_month %}
+            <a href="/" class="btn btn-today">今日</a>
+        {% endif %}
+    </div>
+    <a href="/?year={{ next_year }}&month={{ next_month }}" class="btn btn-nav">&gt;</a>
+</div>
+
+<!-- カレンダーグリッド -->
+<div class="calendar-grid">
+    <div class="day-header sun">日</div>
+    <div class="day-header">月</div>
+    <div class="day-header">火</div>
+    <div class="day-header">水</div>
+    <div class="day-header">木</div>
+    <div class="day-header">金</div>
+    <div class="day-header sat">土</div>
+
+    {% for week in month_days %}
+        {% for day in week %}
+            {% if day == 0 %}
+                <div class="day-cell empty"></div>
+            {% else %}
+                {% set ds = "%04d-%02d-%02d"|format(year, month, day) %}
+                {% set is_today = ds == today_str %}
+                {% set slot_count = dates_with_slots.get(ds, 0) %}
+                <div class="day-cell {% if is_today %}today{% endif %} {% if loop.index0 == 0 %}sun{% elif loop.index0 == 6 %}sat{% endif %}"
+                     hx-get="/day/{{ ds }}"
+                     hx-target="#day-detail"
+                     hx-swap="innerHTML">
+                    <div class="day-number">{{ day }}</div>
+                    {% if slot_count > 0 %}
+                        <div class="slot-badge">{{ slot_count }}</div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+    {% endfor %}
+</div>
+
+<!-- 日詳細パネル -->
+<div id="day-detail" class="day-detail-panel">
+    <p class="hint">日付をタップして空き状況を表示</p>
+</div>
+
+<script>
+    // 施設フィルター
+    let selectedParks = new Set();
+
+    function togglePark(parkName) {
+        const btn = event.target;
+        if (selectedParks.has(parkName)) {
+            selectedParks.delete(parkName);
+            btn.classList.remove('active');
+        } else {
+            selectedParks.add(parkName);
+            btn.classList.add('active');
+        }
+        // 全選択 or 全未選択の場合は全施設表示
+    }
+
+    // 日詳細取得時にフィルターパラメータを追加
+    document.body.addEventListener('htmx:configRequest', function(e) {
+        if (e.detail.path && e.detail.path.startsWith('/day/')) {
+            if (selectedParks.size > 0) {
+                e.detail.parameters['park'] = Array.from(selectedParks).join(',');
+            }
+        }
+    });
+</script>
+{% endblock %}

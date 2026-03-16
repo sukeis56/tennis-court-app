@@ -1,0 +1,32 @@
+{% if slots_by_park %}
+    <div class="detail-header">
+        <h3>{{ date_str }}</h3>
+        <span class="slot-count-label">{{ total }}件の空き</span>
+    </div>
+
+    {% for park_name, park_data in slots_by_park.items() %}
+        <div class="park-section">
+            <h4 class="park-name">{{ park_name }} <span class="park-count">({{ park_data.count }})</span></h4>
+
+            {% for court, times in park_data.courts.items() %}
+                <div class="court-row">
+                    <span class="court-name">{{ court }}</span>
+                    <div class="time-slots">
+                        {% for t in times %}
+                            <span class="time-slot">{{ t }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endfor %}
+
+    <div class="booking-link">
+        <a href="{{ base_url }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">予約サイトを開く</a>
+    </div>
+{% else %}
+    <div class="detail-header">
+        <h3>{{ date_str }}</h3>
+    </div>
+    <p class="hint">この日に空きはありません</p>
+{% endif %}

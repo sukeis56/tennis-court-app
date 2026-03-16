@@ -1,0 +1,398 @@
+/* === Reset & Base === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --border: #333;
+    --text: #e8e8e8;
+    --text-muted: #888;
+    --primary: #4a9eff;
+    --primary-dim: #2a5a9a;
+    --danger: #ff4a4a;
+    --sun: #ff6b6b;
+    --sat: #6b9fff;
+    --today-bg: #1a2a3a;
+    --today-border: #4a9eff;
+    --tennis-green: #22c55e;
+    --tennis-green-dim: rgba(34, 197, 94, 0.15);
+    --radius: 8px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html {
+    font-size: 14px;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* === Header === */
+header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+header h1 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--tennis-green), #4ade80);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* === Buttons === */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s;
+    -webkit-appearance: none;
+}
+
+.btn:active { background: var(--border); }
+.btn-primary { background: var(--tennis-green); border-color: var(--tennis-green); color: #fff; }
+.btn-primary:active { opacity: 0.8; }
+.btn-sm { padding: 4px 10px; font-size: 0.75rem; }
+.btn-nav { padding: 8px 14px; font-size: 1.1rem; font-weight: bold; }
+
+.btn-today {
+    padding: 2px 12px;
+    font-size: 0.7rem;
+    background: var(--tennis-green);
+    border-color: var(--tennis-green);
+    color: #fff;
+    border-radius: 12px;
+}
+
+/* === Status Bar === */
+.status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    max-width: 600px;
+    margin: 0 auto;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.status-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+}
+
+.status-text {
+    color: var(--text-muted);
+}
+
+.status-count {
+    color: var(--tennis-green);
+    font-weight: 600;
+}
+
+.btn-refresh {
+    background: var(--tennis-green);
+    border-color: var(--tennis-green);
+    color: #fff;
+}
+
+.freshness-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.freshness-dot.fresh { background: var(--tennis-green); }
+.freshness-dot.warning { background: #fbbf24; }
+.freshness-dot.stale { background: var(--danger); }
+
+/* Spinner */
+.spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--tennis-green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* === Park Filters === */
+.park-filters {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    max-width: 600px;
+    margin: 0 auto;
+    overflow-x: auto;
+}
+
+.btn-filter {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    border-radius: 16px;
+    white-space: nowrap;
+    opacity: 0.5;
+    transition: opacity 0.15s, background 0.15s;
+}
+
+.btn-filter.active {
+    opacity: 1;
+    background: var(--tennis-green-dim);
+    border-color: var(--tennis-green);
+    color: var(--tennis-green);
+}
+
+/* === Calendar Nav === */
+.calendar-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.calendar-nav-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.calendar-nav h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+/* === Calendar Grid === */
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    max-width: 600px;
+    margin: 0 auto 16px;
+}
+
+.day-header {
+    background: var(--surface);
+    text-align: center;
+    padding: 6px 0;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.day-header.sun { color: var(--sun); }
+.day-header.sat { color: var(--sat); }
+
+.day-cell {
+    background: var(--surface);
+    min-height: 60px;
+    padding: 4px;
+    cursor: pointer;
+    transition: background 0.1s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.day-cell:active { background: var(--surface2); }
+.day-cell.empty { cursor: default; }
+.day-cell.empty:active { background: var(--surface); }
+.day-cell.sun .day-number { color: var(--sun); }
+.day-cell.sat .day-number { color: var(--sat); }
+
+.day-cell.today {
+    background: var(--today-bg);
+    border: 1px solid var(--today-border);
+    margin: -1px;
+}
+
+.day-number {
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+/* === Slot Badge === */
+.slot-badge {
+    background: var(--tennis-green);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    line-height: 1.4;
+    margin-top: 2px;
+}
+
+/* === Day Detail Panel === */
+.day-detail-panel {
+    max-width: 600px;
+    margin: 0 auto 80px;
+    padding: 0 16px;
+}
+
+.hint {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 24px 0;
+    font-size: 0.85rem;
+}
+
+.detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.detail-header h3 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.slot-count-label {
+    font-size: 0.8rem;
+    color: var(--tennis-green);
+    font-weight: 600;
+}
+
+/* === Park Section === */
+.park-section {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.park-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--tennis-green);
+}
+
+.park-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.court-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.court-name {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    min-width: 90px;
+    flex-shrink: 0;
+}
+
+.time-slots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.time-slot {
+    background: var(--tennis-green-dim);
+    color: var(--tennis-green);
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* === Booking Link === */
+.booking-link {
+    padding: 16px 0;
+    text-align: center;
+}
+
+/* === Modal === */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 200;
+    padding: 0 0 var(--safe-bottom);
+}
+
+.modal-content {
+    background: var(--surface);
+    width: 100%;
+    max-width: 600px;
+    max-height: 85dvh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 16px;
+}
+
+.muted {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* === Desktop === */
+@media (min-width: 768px) {
+    html { font-size: 15px; }
+    .day-cell { min-height: 75px; padding: 6px; }
+    .day-number { font-size: 0.9rem; }
+
+    .modal-overlay { align-items: center; }
+    .modal-content {
+        border-radius: var(--radius);
+        max-height: 70vh;
+    }
+}

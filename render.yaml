@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: tennis-court-app
+    runtime: docker
+    plan: free
+    healthCheckPath: /status
+    disk:
+      name: tennis-data
+      mountPath: /app/data
+      sizeGB: 1

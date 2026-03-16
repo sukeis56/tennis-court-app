@@ -1,0 +1,34 @@
+<div id="status-bar"
+     {% if scraper_running %}
+         hx-get="/status" hx-trigger="every 5s" hx-swap="outerHTML"
+     {% endif %}>
+    <div class="status-bar">
+        {% if scraper_running %}
+            <div class="status-left">
+                <span class="spinner"></span>
+                <span>チェック中...</span>
+            </div>
+        {% else %}
+            <div class="status-left">
+                {% if last_scrape and last_scrape.finished_at %}
+                    {% set finished = last_scrape.finished_at[:16].replace('T', ' ') %}
+                    <span class="freshness-dot
+                        {% if last_scrape.status == 'error' %}stale
+                        {% else %}fresh
+                        {% endif %}"></span>
+                    <span class="status-text">最終: {{ finished }}</span>
+                    <span class="status-count">{{ total_slots }}件</span>
+                {% else %}
+                    <span class="freshness-dot stale"></span>
+                    <span class="status-text">未チェック</span>
+                {% endif %}
+            </div>
+            <button class="btn btn-sm btn-refresh"
+                    hx-post="/scrape"
+                    hx-target="#status-bar"
+                    hx-swap="outerHTML">
+                更新
+            </button>
+        {% endif %}
+    </div>
+</div>
