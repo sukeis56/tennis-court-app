@@ -20,15 +20,9 @@
                     <span class="status-count">{{ total_slots }}件</span>
                 {% else %}
                     <span class="freshness-dot stale"></span>
-                    <span class="status-text">未チェック</span>
+                    <span class="status-text">未チェック — 下のフォームから検索してください</span>
                 {% endif %}
             </div>
-            <button class="btn btn-sm btn-refresh"
-                    hx-post="/scrape"
-                    hx-target="#status-bar"
-                    hx-swap="outerHTML">
-                更新
-            </button>
         {% endif %}
     </div>
 </div>

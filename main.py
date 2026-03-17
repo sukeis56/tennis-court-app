@@ -4,8 +4,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Query
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, Form, Request, Query
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -13,11 +13,55 @@ import config
 import database
 from services.scraper import run_scrape
 from services.line_notify import send_line_notification
+from services.google_auth import load_credentials, get_flow, save_credentials, clear_credentials
+from services.google_calendar import list_events_for_month
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 JST = timezone(timedelta(hours=9))
+
+# テニス・ジムなど除外すべきイベントのキーワード
+BUSY_KEYWORDS = ["テニス", "ジム", "RAT", "TOP", "GODAI", "新横浜", "三ツ沢", "三ッ沢", "入船", "清水ケ丘"]
+
+# イベントカテゴリ定義: (キーワード, 絵文字, CSSクラス)
+EVENT_CATEGORIES = [
+    # 公園テニス（黄緑）
+    (["新横浜", "三ツ沢", "三ッ沢", "入船", "清水ケ丘", "公園テニス"], "\U0001F3BE", "ev-park"),
+    # テニススクール（青）
+    (["TOP", "GODAI", "テニススクール", "スクール"], "\U0001F3BE", "ev-school"),
+    # ジム（赤）
+    (["RAT", "ジム", "トレーニング", "筋トレ"], "\U0001F4AA", "ev-gym"),
+    # その他
+    (["ランニング", "ジョギング", "マラソン"], "\U0001F3C3", "ev-default"),
+    (["会議", "ミーティング", "MTG", "打ち合わせ"], "\U0001F4BC", "ev-default"),
+    (["飲み", "飲み会", "食事", "ランチ", "ディナー"], "\U0001F37B", "ev-default"),
+    (["病院", "歯医者", "クリニック", "通院"], "\U0001F3E5", "ev-default"),
+    (["旅行", "出張"], "\U00002708", "ev-default"),
+    (["誕生日", "バースデー"], "\U0001F382", "ev-default"),
+    (["買い物", "ショッピング"], "\U0001F6CD", "ev-default"),
+    (["美容院", "散髪", "ヘアサロン"], "\U00002702", "ev-default"),
+]
+DEFAULT_EMOJI = "\U0001F4C5"  # 📅
+DEFAULT_CLASS = "ev-default"
+
+
+def _get_event_info(summary: str) -> tuple[str, str]:
+    """イベント名から (絵文字, CSSクラス) を返す"""
+    for keywords, emoji, css_class in EVENT_CATEGORIES:
+        if any(kw in summary for kw in keywords):
+            return emoji, css_class
+    return DEFAULT_EMOJI, DEFAULT_CLASS
+
+
+def _format_event_short(ev: dict) -> str:
+    """カレンダーグリッド用の短い表示: '19:00🎾'"""
+    emoji, _ = _get_event_info(ev.get("summary", ""))
+    time = ev.get("start_time", "")
+    if time:
+        return f"{time}{emoji}"
+    return emoji
+
 
 app = FastAPI(title="Tennis Court Checker")
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
@@ -31,7 +75,11 @@ scraper_state = {
 }
 
 
-async def run_scrape_task(notify: bool = False):
+async def run_scrape_task(
+    notify: bool = False,
+    parks: list[str] | None = None,
+    target_dates: list[str] | None = None,
+):
     """asyncio.to_thread でスクレイパーを実行し、結果をDB保存"""
     if scraper_state["running"]:
         logger.info("スクレイプ既に実行中、スキップ")
@@ -41,8 +89,8 @@ async def run_scrape_task(notify: bool = False):
     log_id = database.log_scrape_start()
 
     try:
-        logger.info("スクレイプタスク開始")
-        slots = await asyncio.to_thread(run_scrape)
+        logger.info("スクレイプタスク開始 (施設=%s, 日付=%s)", parks, target_dates)
+        slots = await asyncio.to_thread(run_scrape, parks, None, target_dates)
         database.save_slots(slots)
         database.log_scrape_finish(log_id, "success", len(slots))
         scraper_state["last_run"] = datetime.now(JST)
@@ -70,15 +118,7 @@ def _seconds_until_next_run() -> float:
 
 
 async def scheduled_scrape_loop():
-    """毎朝7時(JST)にスクレイプ + LINE通知"""
-    # 初回: 起動30秒後に実行（通知なし）
-    await asyncio.sleep(30)
-    try:
-        await run_scrape_task(notify=False)
-    except Exception as e:
-        logger.error("初回スクレイプでエラー: %s", e)
-
-    # 以降は毎朝7時に実行（通知あり）
+    """毎朝7時(JST)にスクレイプ + LINE通知（起動時の自動実行なし）"""
     while True:
         wait = _seconds_until_next_run()
         await asyncio.sleep(wait)
@@ -88,11 +128,80 @@ async def scheduled_scrape_loop():
             logger.error("定期スクレイプでエラー: %s", e)
 
 
+def _get_calendar_events(year: int, month: int) -> tuple[dict, set[str]]:
+    """Googleカレンダーからイベントを取得。祝日は除外し、祝日日付セットを別途返す"""
+    creds = load_credentials()
+    if not creds:
+        return {}, set()
+
+    events = list_events_for_month(creds, year, month)
+    by_date = {}
+    holiday_dates = set()
+    for ev in events:
+        # 祝日カレンダーのイベントは除外し、日付だけ記録
+        cal_name = ev.get("calendar_name", "")
+        if "祝日" in cal_name or "Holiday" in cal_name.lower():
+            holiday_dates.add(ev["date"])
+            continue
+
+        summary = ev.get("summary", "")
+        emoji, css_class = _get_event_info(summary)
+        ev["short"] = _format_event_short(ev)
+        ev["emoji"] = emoji
+        ev["css_class"] = css_class
+        date = ev["date"]
+        by_date.setdefault(date, []).append(ev)
+    return by_date, holiday_dates
+
+
+def _get_busy_dates(year: int, month: int) -> set[str]:
+    """テニス・ジムの予定がある日付を返す"""
+    creds = load_credentials()
+    if not creds:
+        return set()
+
+    events = list_events_for_month(creds, year, month)
+    busy = set()
+    for ev in events:
+        _, css_class = _get_event_info(ev.get("summary", ""))
+        if css_class in ("ev-park", "ev-school", "ev-gym"):
+            busy.add(ev["date"])
+    return busy
+
+
 @app.on_event("startup")
 async def startup():
     database.init_db()
     asyncio.create_task(scheduled_scrape_loop())
     logger.info("アプリ起動完了")
+
+
+# --- Google認証 ---
+@app.get("/auth/login")
+async def auth_login(request: Request):
+    redirect_uri = str(request.base_url) + "auth/callback"
+    flow = get_flow(redirect_uri)
+    if not flow:
+        return HTMLResponse("<p>credentials.json が見つかりません</p>", status_code=500)
+    auth_url, _ = flow.authorization_url(prompt="consent")
+    return RedirectResponse(auth_url)
+
+
+@app.get("/auth/callback")
+async def auth_callback(request: Request, code: str = ""):
+    if not code:
+        return RedirectResponse("/")
+    redirect_uri = str(request.base_url) + "auth/callback"
+    flow = get_flow(redirect_uri)
+    flow.fetch_token(code=code)
+    save_credentials(flow.credentials)
+    return RedirectResponse("/")
+
+
+@app.get("/auth/logout")
+async def auth_logout():
+    clear_credentials()
+    return RedirectResponse("/")
 
 
 # --- PWA ---
@@ -142,6 +251,11 @@ async def index(
     # 選択中の施設フィルター
     selected_parks = [p.strip() for p in park.split(",") if p.strip()] if park else []
 
+    # Googleカレンダー連携
+    calendar_events, holiday_dates = _get_calendar_events(year, month)
+    busy_dates = _get_busy_dates(year, month)
+    gcal_connected = load_credentials() is not None
+
     context = {
         "request": request,
         "year": year,
@@ -159,6 +273,10 @@ async def index(
         "parks": config.PARKS,
         "selected_parks": selected_parks,
         "scraper_running": scraper_state["running"],
+        "calendar_events": calendar_events,
+        "busy_dates": busy_dates,
+        "holiday_dates": holiday_dates,
+        "gcal_connected": gcal_connected,
     }
     return templates.TemplateResponse("calendar.html", context)
 
@@ -179,21 +297,50 @@ async def day_detail(request: Request, date_str: str, park: str = ""):
         by_park[park]["count"] += 1
         by_park[park]["courts"].setdefault(court, []).append(s["time"])
 
+    # Googleカレンダーのイベント
+    cal_events = []
+    creds = load_credentials()
+    if creds:
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            all_events = list_events_for_month(creds, dt.year, dt.month)
+            cal_events = [e for e in all_events if e["date"] == date_str]
+            for ev in cal_events:
+                emoji, css_class = _get_event_info(ev.get("summary", ""))
+                ev["short"] = _format_event_short(ev)
+                ev["emoji"] = emoji
+                ev["css_class"] = css_class
+        except Exception:
+            pass
+
     context = {
         "request": request,
         "date_str": date_str,
         "slots_by_park": by_park,
         "total": len(slots),
         "base_url": config.BASE_URL,
+        "calendar_events": cal_events,
     }
     return templates.TemplateResponse("partials/day_detail.html", context)
 
 
 # --- 手動スクレイプ ---
 @app.post("/scrape", response_class=HTMLResponse)
-async def manual_scrape(request: Request):
+async def manual_scrape(
+    request: Request,
+    parks: list[str] = Form(default=[]),
+    dates: list[str] = Form(default=[]),
+):
     if not scraper_state["running"]:
-        asyncio.create_task(run_scrape_task(notify=True))
+        # フォームからの施設選択（空ならALL）
+        selected_parks = parks if parks else None
+        # フォームからの日付選択（空ならNone = 全期間）
+        target_dates = [d for d in dates if d] if dates else None
+        asyncio.create_task(run_scrape_task(
+            notify=True,
+            parks=selected_parks,
+            target_dates=target_dates,
+        ))
     return templates.TemplateResponse("partials/status_bar.html", {
         "request": request,
         "last_scrape": database.get_last_scrape(),

@@ -1,6 +1,23 @@
+<!-- Googleカレンダーの予定 -->
+{% if calendar_events %}
+    <div class="detail-header">
+        <h3>{{ date_str }} の予定</h3>
+    </div>
+    <div class="cal-events-detail">
+        {% for ev in calendar_events %}
+            <div class="cal-event-row {{ ev.css_class }}">
+                <span class="cal-event-time">{{ ev.start_time or "終日" }}</span>
+                <span class="cal-event-emoji">{{ ev.emoji }}</span>
+                <span class="cal-event-summary">{{ ev.summary }}</span>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<!-- コート空き状況 -->
 {% if slots_by_park %}
     <div class="detail-header">
-        <h3>{{ date_str }}</h3>
+        <h3>{{ date_str }} のコート空き</h3>
         <span class="slot-count-label">{{ total }}件の空き</span>
     </div>
 
@@ -24,7 +41,7 @@
     <div class="booking-link">
         <a href="{{ base_url }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">予約サイトを開く</a>
     </div>
-{% else %}
+{% elif not calendar_events %}
     <div class="detail-header">
         <h3>{{ date_str }}</h3>
     </div>

@@ -1,6 +1,6 @@
 import os
 
-SCRAPE_DAYS_AHEAD = 14
+SCRAPE_DAYS_AHEAD = 28
 SCRAPE_HOUR_JST = 7  # 毎朝7時(JST)にスクレイプ
 DB_PATH = "data/tennis.db"
 
@@ -19,6 +19,6 @@ PARKS = {
     "三ツ沢公園":   {"search": "三ツ沢",   "short": "三ツ沢"},
     "新横浜公園":   {"search": "新横浜公園", "short": "新横浜"},
     "入船公園":     {"search": "入船",     "short": "入船"},
-    "清水ヶ丘公園": {"search": "清水ヶ丘",  "short": "清水ヶ丘"},
+    "清水ケ丘公園": {"search": "清水ケ丘",  "short": "清水ケ丘"},
 }
 ALL_PARKS = list(PARKS.keys())

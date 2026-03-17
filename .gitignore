@@ -5,3 +5,5 @@ data/*.db-wal
 data/*.db-shm
 .env
 debug_*.png
+credentials.json
+token.json

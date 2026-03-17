@@ -6,7 +6,54 @@
     {% include "partials/status_bar.html" %}
 </div>
 
-<!-- 施設フィルター -->
+<!-- Googleカレンダー連携 -->
+<div class="gcal-bar">
+    {% if gcal_connected %}
+        <span class="gcal-status connected">Googleカレンダー連携中</span>
+        <a href="/auth/logout" class="btn btn-xs">解除</a>
+    {% else %}
+        <a href="/auth/login" class="btn btn-xs btn-gcal">Googleカレンダーと連携</a>
+    {% endif %}
+</div>
+
+<!-- 検索フォーム -->
+<form id="search-form" hx-post="/scrape" hx-target="#status-bar" hx-swap="outerHTML" class="search-form">
+    <!-- 施設選択 -->
+    <div class="search-section">
+        <h3 class="search-label">施設</h3>
+        <div class="park-checks">
+            {% for park_name, park_info in parks.items() %}
+                <label class="park-check">
+                    <input type="checkbox" name="parks" value="{{ park_name }}" checked>
+                    <span class="park-check-label">{{ park_info.short }}</span>
+                </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 日付選択 -->
+    <div class="search-section">
+        <h3 class="search-label">日付 <span class="search-hint">（未選択で全期間）</span></h3>
+        <div class="date-picker-area">
+            <div class="date-chips" id="date-chips"></div>
+            <input type="date" id="date-input" class="date-input" min="{{ today_str }}">
+            <button type="button" class="btn btn-sm btn-add-date" onclick="addDate()">＋ 日付を追加</button>
+        </div>
+        <div class="date-shortcuts">
+            <button type="button" class="btn btn-xs" onclick="addWeekend()">直近の土日</button>
+            <button type="button" class="btn btn-xs" onclick="addNextWeekend()">来週の土日</button>
+            <button type="button" class="btn btn-xs btn-free" onclick="addFreeDays(7)">1週間</button>
+            <button type="button" class="btn btn-xs btn-free" onclick="addFreeDays(14)">2週間</button>
+            <button type="button" class="btn btn-xs btn-free" onclick="addFreeDays(21)">3週間</button>
+            <button type="button" class="btn btn-xs btn-free" onclick="addFreeDays(28)">4週間</button>
+        </div>
+    </div>
+
+    <!-- 検索開始ボタン -->
+    <button type="submit" class="btn btn-primary btn-search">検索開始</button>
+</form>
+
+<!-- 施設フィルター（結果表示用） -->
 <div class="park-filters">
     {% for park_name, park_info in parks.items() %}
         <button class="btn btn-filter {% if not selected_parks or park_name in selected_parks %}active{% endif %}"
@@ -46,7 +93,10 @@
                 {% set ds = "%04d-%02d-%02d"|format(year, month, day) %}
                 {% set is_today = ds == today_str %}
                 {% set slot_count = dates_with_slots.get(ds, 0) %}
-                <div class="day-cell {% if is_today %}today{% endif %} {% if loop.index0 == 0 %}sun{% elif loop.index0 == 6 %}sat{% endif %}"
+                {% set is_busy = ds in busy_dates %}
+                {% set is_holiday = ds in holiday_dates %}
+                {% set day_events = calendar_events.get(ds, []) %}
+                <div class="day-cell {% if is_today %}today{% endif %} {% if is_busy %}busy{% endif %} {% if is_holiday %}holiday{% endif %} {% if loop.index0 == 0 %}sun{% elif loop.index0 == 6 %}sat{% endif %}"
                      hx-get="/day/{{ ds }}"
                      hx-target="#day-detail"
                      hx-swap="innerHTML">
@@ -54,11 +104,31 @@
                     {% if slot_count > 0 %}
                         <div class="slot-badge">{{ slot_count }}</div>
                     {% endif %}
+                    {% if day_events %}
+                        {% for ev in day_events[:3] %}
+                            <div class="cal-event {{ ev.css_class }}">
+                                {{ ev.short }}
+                            </div>
+                        {% endfor %}
+                        {% if day_events|length > 3 %}
+                            <div class="cal-event-more">+{{ day_events|length - 3 }}</div>
+                        {% endif %}
+                    {% endif %}
                 </div>
             {% endif %}
         {% endfor %}
     {% endfor %}
 </div>
+
+<!-- 凡例 -->
+{% if gcal_connected %}
+<div class="legend">
+    <span class="legend-item"><span class="legend-dot" style="background:#4ade80"></span>公園テニス</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#60a5fa"></span>スクール</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#f87171"></span>ジム</span>
+    <span class="legend-item"><span class="legend-dot legend-dot-slot"></span>コート空き</span>
+</div>
+{% endif %}
 
 <!-- 日詳細パネル -->
 <div id="day-detail" class="day-detail-panel">
@@ -66,7 +136,106 @@
 </div>
 
 <script>
-    // 施設フィルター
+    // === busy日（テニス・ジム等の予定がある日） ===
+    const busyDates = new Set({{ busy_dates | list | tojson }});
+
+    // === 日付管理 ===
+    const selectedDates = new Set();
+
+    function renderDateChips() {
+        const container = document.getElementById('date-chips');
+        container.querySelectorAll('input[type="hidden"]').forEach(el => el.remove());
+
+        const sorted = Array.from(selectedDates).sort();
+        container.innerHTML = sorted.map(d => {
+            const [y, m, day] = d.split('-');
+            const dt = new Date(y, m - 1, day);
+            const dow = ['日','月','火','水','木','金','土'][dt.getDay()];
+            const label = `${parseInt(m)}/${parseInt(day)}(${dow})`;
+            return `<span class="date-chip">
+                ${label}
+                <button type="button" class="date-chip-remove" onclick="removeDate('${d}')">&times;</button>
+                <input type="hidden" name="dates" value="${d}">
+            </span>`;
+        }).join('');
+    }
+
+    function addDate() {
+        const input = document.getElementById('date-input');
+        if (input.value) {
+            selectedDates.add(input.value);
+            renderDateChips();
+            input.value = '';
+        }
+    }
+
+    function removeDate(d) {
+        selectedDates.delete(d);
+        renderDateChips();
+    }
+
+    function addWeekend() {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        let daysUntilSat = (6 - dayOfWeek) % 7;
+        if (daysUntilSat === 0 && today.getHours() >= 21) daysUntilSat = 7;
+
+        const sat = new Date(today);
+        sat.setDate(today.getDate() + daysUntilSat);
+        const sun = new Date(sat);
+        sun.setDate(sat.getDate() + 1);
+
+        selectedDates.add(formatDate(sat));
+        selectedDates.add(formatDate(sun));
+        renderDateChips();
+    }
+
+    function addNextWeekend() {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        let daysUntilSat = (6 - dayOfWeek) % 7;
+        if (daysUntilSat === 0) daysUntilSat = 7;
+        daysUntilSat += 7;
+        if (dayOfWeek === 0) daysUntilSat = 6;
+
+        const sat = new Date(today);
+        sat.setDate(today.getDate() + daysUntilSat);
+        const sun = new Date(sat);
+        sun.setDate(sat.getDate() + 1);
+
+        selectedDates.add(formatDate(sat));
+        selectedDates.add(formatDate(sun));
+        renderDateChips();
+    }
+
+    function formatDate(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function addFreeDays(days) {
+        const today = new Date();
+        for (let i = 0; i <= days; i++) {
+            const d = new Date(today);
+            d.setDate(today.getDate() + i);
+            const ds = formatDate(d);
+            if (!busyDates.has(ds)) {
+                selectedDates.add(ds);
+            }
+        }
+        renderDateChips();
+    }
+
+    document.getElementById('date-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addDate();
+        }
+    });
+
+    // === 施設フィルター（結果表示用） ===
     let selectedParks = new Set();
 
     function togglePark(parkName) {
@@ -78,10 +247,8 @@
             selectedParks.add(parkName);
             btn.classList.add('active');
         }
-        // 全選択 or 全未選択の場合は全施設表示
     }
 
-    // 日詳細取得時にフィルターパラメータを追加
     document.body.addEventListener('htmx:configRequest', function(e) {
         if (e.detail.path && e.detail.path.startsWith('/day/')) {
             if (selectedParks.size > 0) {
