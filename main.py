@@ -1,6 +1,7 @@
 import asyncio
 import calendar
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -182,7 +183,11 @@ async def auth_login(request: Request):
     redirect_uri = str(request.base_url) + "auth/callback"
     flow = get_flow(redirect_uri)
     if not flow:
-        return HTMLResponse("<p>credentials.json が見つかりません</p>", status_code=500)
+        has_env = bool(os.environ.get("GOOGLE_CREDENTIALS_JSON", ""))
+        return HTMLResponse(
+            f"<p>Google認証情報が見つかりません。credentials.json (存在しない) / 環境変数 GOOGLE_CREDENTIALS_JSON ({'設定あり' if has_env else '未設定'})</p>",
+            status_code=500,
+        )
     auth_url, _ = flow.authorization_url(prompt="consent")
     return RedirectResponse(auth_url)
 

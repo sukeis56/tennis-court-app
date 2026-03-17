@@ -1,9 +1,12 @@
 import json
+import logging
 import os
 from pathlib import Path
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
+
+logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
@@ -27,6 +30,7 @@ def get_flow(redirect_uri: str) -> Flow | None:
     # ローカルファイル
     creds_path = _find_credentials_path()
     if creds_path:
+        logger.info("credentials.json をファイルから読み込み: %s", creds_path)
         return Flow.from_client_secrets_file(
             str(creds_path),
             scopes=SCOPES,
@@ -35,6 +39,7 @@ def get_flow(redirect_uri: str) -> Flow | None:
 
     # 環境変数（Render用）
     creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+    logger.info("GOOGLE_CREDENTIALS_JSON 環境変数: %s", "設定あり" if creds_json else "未設定")
     if creds_json:
         try:
             parsed = json.loads(creds_json)
@@ -48,14 +53,16 @@ def get_flow(redirect_uri: str) -> Flow | None:
                     "redirect_uris": [redirect_uri],
                 }
             }
+            logger.info("環境変数からFlow作成: client_id=%s...", web.get("client_id", "")[:20])
             return Flow.from_client_config(
                 client_config,
                 scopes=SCOPES,
                 redirect_uri=redirect_uri,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("環境変数からのFlow作成に失敗: %s", e)
 
+    logger.warning("credentials が見つかりません（ファイルも環境変数もなし）")
     return None
 
 
