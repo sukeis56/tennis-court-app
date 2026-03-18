@@ -10,7 +10,6 @@
 <div class="gcal-bar">
     {% if gcal_connected %}
         <span class="gcal-status connected">Googleカレンダー連携中</span>
-        <a href="/auth/logout" class="btn btn-xs">解除</a>
     {% else %}
         <a href="/auth/login" class="btn btn-xs btn-gcal">Googleカレンダーと連携</a>
     {% endif %}
