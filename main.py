@@ -184,8 +184,11 @@ async def auth_login(request: Request):
     flow = get_flow(redirect_uri)
     if not flow:
         has_env = bool(os.environ.get("GOOGLE_CREDENTIALS_JSON", ""))
+        env_preview = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")[:80] if has_env else "N/A"
         return HTMLResponse(
-            f"<p>Google認証情報が見つかりません。credentials.json (存在しない) / 環境変数 GOOGLE_CREDENTIALS_JSON ({'設定あり' if has_env else '未設定'})</p>",
+            f"<p>Google認証情報からFlowを作成できませんでした。<br>"
+            f"環境変数 GOOGLE_CREDENTIALS_JSON: {'設定あり' if has_env else '未設定'}<br>"
+            f"先頭80文字: {env_preview}...</p>",
             status_code=500,
         )
     auth_url, _ = flow.authorization_url(prompt="consent")
