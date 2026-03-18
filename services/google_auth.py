@@ -60,7 +60,9 @@ def get_flow(redirect_uri: str) -> Flow | None:
                 redirect_uri=redirect_uri,
             )
         except Exception as e:
-            logger.error("環境変数からのFlow作成に失敗: %s", e)
+            logger.error("環境変数からのFlow作成に失敗: %s", e, exc_info=True)
+            # エラー内容を呼び出し元に伝える
+            raise RuntimeError(f"Flow作成失敗: {e}") from e
 
     logger.warning("credentials が見つかりません（ファイルも環境変数もなし）")
     return None

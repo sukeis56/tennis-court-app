@@ -181,14 +181,15 @@ async def startup():
 @app.get("/auth/login")
 async def auth_login(request: Request):
     redirect_uri = str(request.base_url) + "auth/callback"
-    flow = get_flow(redirect_uri)
+    try:
+        flow = get_flow(redirect_uri)
+    except Exception as e:
+        return HTMLResponse(f"<p>Flow作成でエラー: {e}</p>", status_code=500)
     if not flow:
         has_env = bool(os.environ.get("GOOGLE_CREDENTIALS_JSON", ""))
-        env_preview = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")[:80] if has_env else "N/A"
         return HTMLResponse(
-            f"<p>Google認証情報からFlowを作成できませんでした。<br>"
-            f"環境変数 GOOGLE_CREDENTIALS_JSON: {'設定あり' if has_env else '未設定'}<br>"
-            f"先頭80文字: {env_preview}...</p>",
+            f"<p>Google認証情報が見つかりません。<br>"
+            f"環境変数 GOOGLE_CREDENTIALS_JSON: {'設定あり' if has_env else '未設定'}</p>",
             status_code=500,
         )
     auth_url, _ = flow.authorization_url(prompt="consent")
