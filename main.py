@@ -178,6 +178,10 @@ async def startup():
 
 
 # --- Google認証 ---
+# Flowをリクエストをまたいで保持（PKCEのcode_verifier対策）
+_pending_flow = {}
+
+
 @app.get("/auth/login")
 async def auth_login(request: Request):
     redirect_uri = str(request.base_url) + "auth/callback"
@@ -192,16 +196,22 @@ async def auth_login(request: Request):
             f"環境変数 GOOGLE_CREDENTIALS_JSON: {'設定あり' if has_env else '未設定'}</p>",
             status_code=500,
         )
-    auth_url, _ = flow.authorization_url(prompt="consent")
+    flow.code_verifier = None  # PKCEを無効化
+    auth_url, state = flow.authorization_url(prompt="consent", access_type="offline")
+    _pending_flow[state] = flow
     return RedirectResponse(auth_url)
 
 
 @app.get("/auth/callback")
-async def auth_callback(request: Request, code: str = ""):
+async def auth_callback(request: Request, code: str = "", state: str = ""):
     if not code:
         return RedirectResponse("/")
-    redirect_uri = str(request.base_url) + "auth/callback"
-    flow = get_flow(redirect_uri)
+    # 保存したFlowを再利用
+    flow = _pending_flow.pop(state, None)
+    if not flow:
+        redirect_uri = str(request.base_url) + "auth/callback"
+        flow = get_flow(redirect_uri)
+        flow.code_verifier = None
     flow.fetch_token(code=code)
     save_credentials(flow.credentials)
     return RedirectResponse("/")
