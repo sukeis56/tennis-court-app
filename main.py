@@ -133,9 +133,16 @@ def _get_calendar_events(year: int, month: int) -> tuple[dict, set[str]]:
     """Googleカレンダーからイベントを取得。祝日は除外し、祝日日付セットを別途返す"""
     creds = load_credentials()
     if not creds:
+        logger.warning("Google認証情報なし → カレンダー取得スキップ")
         return {}, set()
 
-    events = list_events_for_month(creds, year, month)
+    logger.info("Googleカレンダー取得開始: %d年%d月", year, month)
+    try:
+        events = list_events_for_month(creds, year, month)
+        logger.info("Googleカレンダー取得成功: %d件のイベント", len(events))
+    except Exception as e:
+        logger.error("Googleカレンダー取得失敗: %s", e, exc_info=True)
+        return {}, set()
     by_date = {}
     holiday_dates = set()
     for ev in events:
@@ -381,6 +388,20 @@ async def status(request: Request):
         "scraper_running": scraper_state["running"],
         "total_slots": database.get_total_slot_count(),
     })
+
+
+# --- デバッグ ---
+@app.get("/debug/gcal", response_class=HTMLResponse)
+async def debug_gcal():
+    creds = load_credentials()
+    if not creds:
+        return HTMLResponse("<p>認証情報なし (load_credentials returned None)</p>")
+    try:
+        events = list_events_for_month(creds, 2026, 4)
+        items = [f"{e['date']} {e.get('start_time','')} {e['summary']}" for e in events[:20]]
+        return HTMLResponse(f"<pre>取得成功: {len(events)}件\n" + "\n".join(items) + "</pre>")
+    except Exception as e:
+        return HTMLResponse(f"<p>カレンダー取得エラー: {e}</p>")
 
 
 if __name__ == "__main__":
