@@ -293,8 +293,8 @@ async def index(
         "selected_parks": selected_parks,
         "scraper_running": scraper_state["running"],
         "calendar_events": calendar_events,
-        "busy_dates": busy_dates,
-        "holiday_dates": holiday_dates,
+        "busy_dates": sorted(busy_dates),
+        "holiday_dates": sorted(holiday_dates),
         "gcal_connected": gcal_connected,
     }
     return templates.TemplateResponse("calendar.html", context)
