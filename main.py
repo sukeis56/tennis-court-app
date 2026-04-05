@@ -390,20 +390,6 @@ async def status(request: Request):
     })
 
 
-# --- デバッグ ---
-@app.get("/debug/gcal", response_class=HTMLResponse)
-async def debug_gcal():
-    creds = load_credentials()
-    if not creds:
-        return HTMLResponse("<p>認証情報なし (load_credentials returned None)</p>")
-    try:
-        events = list_events_for_month(creds, 2026, 4)
-        items = [f"{e['date']} {e.get('start_time','')} {e['summary']}" for e in events[:20]]
-        return HTMLResponse(f"<pre>取得成功: {len(events)}件\n" + "\n".join(items) + "</pre>")
-    except Exception as e:
-        return HTMLResponse(f"<p>カレンダー取得エラー: {e}</p>")
-
-
 if __name__ == "__main__":
     import os
     import uvicorn
