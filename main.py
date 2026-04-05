@@ -276,7 +276,6 @@ async def index(
     gcal_connected = load_credentials() is not None
 
     context = {
-        "request": request,
         "year": year,
         "month": month,
         "month_days": month_days,
@@ -297,7 +296,7 @@ async def index(
         "holiday_dates": sorted(holiday_dates),
         "gcal_connected": gcal_connected,
     }
-    return templates.TemplateResponse("calendar.html", context)
+    return templates.TemplateResponse(request=request, name="calendar.html", context=context)
 
 
 # --- 日別詳細 ---
@@ -333,14 +332,13 @@ async def day_detail(request: Request, date_str: str, park: str = ""):
             pass
 
     context = {
-        "request": request,
         "date_str": date_str,
         "slots_by_park": by_park,
         "total": len(slots),
         "base_url": config.BASE_URL,
         "calendar_events": cal_events,
     }
-    return templates.TemplateResponse("partials/day_detail.html", context)
+    return templates.TemplateResponse(request=request, name="partials/day_detail.html", context=context)
 
 
 # --- 手動スクレイプ ---
@@ -360,8 +358,7 @@ async def manual_scrape(
             parks=selected_parks,
             target_dates=target_dates,
         ))
-    return templates.TemplateResponse("partials/status_bar.html", {
-        "request": request,
+    return templates.TemplateResponse(request=request, name="partials/status_bar.html", context={
         "last_scrape": database.get_last_scrape(),
         "scraper_running": True,
         "total_slots": database.get_total_slot_count(),
@@ -379,8 +376,7 @@ async def test_notify(request: Request):
 # --- ステータス ---
 @app.get("/status", response_class=HTMLResponse)
 async def status(request: Request):
-    return templates.TemplateResponse("partials/status_bar.html", {
-        "request": request,
+    return templates.TemplateResponse(request=request, name="partials/status_bar.html", context={
         "last_scrape": database.get_last_scrape(),
         "scraper_running": scraper_state["running"],
         "total_slots": database.get_total_slot_count(),
