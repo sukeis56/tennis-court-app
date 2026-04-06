@@ -330,23 +330,23 @@ class TennisChecker:
             logger.info("    空きなし")
             return
 
-        # セルをタイプ別に分類
-        type_indices = {"normal": [], "same_day": [], "next_day": []}
-        for i in range(total):
-            try:
-                td = available_tds.nth(i)
-                if td.is_visible():
-                    slot_type = self._classify_cell(td)
-                    type_indices[slot_type].append(i)
-            except Exception:
-                type_indices["normal"].append(i)
+        # タイプごとに処理（毎回セルを再スキャンしてインデックスを取得）
+        for slot_type, keyword in [("normal", None), ("same_day", "当日開放"), ("next_day", "翌日開放")]:
+            # 毎回再スキャンしてインデックスを特定（DOM変化に対応）
+            available_tds = page.locator(self.AVAILABLE_SELECTOR)
+            current_total = available_tds.count()
+            indices = []
+            for i in range(current_total):
+                try:
+                    td = available_tds.nth(i)
+                    if not td.is_visible():
+                        continue
+                    cell_type = self._classify_cell(td)
+                    if cell_type == slot_type:
+                        indices.append(i)
+                except Exception:
+                    pass
 
-        for stype, count in type_indices.items():
-            if count:
-                logger.info("      %s: %d件", stype, len(count))
-
-        # タイプごとに別バッチで処理
-        for slot_type, indices in type_indices.items():
             if not indices:
                 continue
             logger.info("    [%s] %d件を処理", slot_type, len(indices))

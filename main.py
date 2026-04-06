@@ -393,6 +393,28 @@ async def status(request: Request):
     })
 
 
+@app.get("/debug/check", response_class=HTMLResponse)
+async def debug_check():
+    creds = load_credentials()
+    lines = [f"creds: {'OK' if creds else 'None'}"]
+    if creds:
+        try:
+            events = list_events_for_month(creds, 2026, 4)
+            lines.append(f"events: {len(events)}件")
+            for e in events[:5]:
+                lines.append(f"  {e['date']} {e.get('start_time','')} {e['summary']}")
+        except Exception as e:
+            lines.append(f"events error: {e}")
+    try:
+        slots = database.get_slots_for_date("2026-04-16")
+        lines.append(f"slots for 4/16: {len(slots)}件")
+        for s in slots[:5]:
+            lines.append(f"  {s['park']} {s['court']} {s['time']} type={s.get('slot_type','?')}")
+    except Exception as e:
+        lines.append(f"slots error: {e}")
+    return HTMLResponse(f"<pre>{'<br>'.join(lines)}</pre>")
+
+
 if __name__ == "__main__":
     import os
     import uvicorn
