@@ -582,7 +582,9 @@ def run_release_scrape(
     days_ahead: int | None = None,
     target_dates: list[str] | None = None,
 ) -> list[dict]:
-    """開放待ち検索: 「日時から探す」→「開放待ち」で検索して結果を返す"""
+    """開放待ち検索: 「日時から探す」→「開放待ち」で検索して結果を返す。
+    100件上限対策として1週間ずつ分割して検索する。
+    """
     if parks is None:
         parks = config.ALL_PARKS
     if days_ahead is None:
@@ -593,19 +595,16 @@ def run_release_scrape(
 
     if target_dates:
         max_date = max(datetime.strptime(d, "%Y-%m-%d").date() for d in target_dates)
-        date_from = today + timedelta(days=1)
-        date_to = max_date
+        overall_from = today + timedelta(days=1)
+        overall_to = max_date
     else:
-        date_from = today + timedelta(days=1)
-        date_to = today + timedelta(days=days_ahead)
+        overall_from = today + timedelta(days=1)
+        overall_to = today + timedelta(days=days_ahead)
 
-    date_from_str = date_from.strftime("%Y-%m-%d")
-    date_to_str = date_to.strftime("%Y-%m-%d")
-
-    logger.info("開放待ち検索: %s ～ %s, 施設=%s", date_from_str, date_to_str, parks)
-
-    results = []
+    # 1週間ずつに分割
+    all_results = []
     park_names_set = set(parks)
+    chunk_from = overall_from
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -615,65 +614,18 @@ def run_release_scrape(
         page.set_default_timeout(60000)
 
         try:
-            # トップページ
-            page.goto(config.BASE_URL, wait_until="networkidle")
-            page.wait_for_timeout(3000)
+            while chunk_from <= overall_to:
+                chunk_to = min(chunk_from + timedelta(days=6), overall_to)
+                chunk_from_str = chunk_from.strftime("%Y-%m-%d")
+                chunk_to_str = chunk_to.strftime("%Y-%m-%d")
+                logger.info("開放待ち検索: %s ～ %s", chunk_from_str, chunk_to_str)
 
-            # 「日時から探す」タブをクリック
-            logger.info("  「日時から探す」タブを選択...")
-            page.get_by_role("tab", name="日時から探す").click()
-            page.wait_for_timeout(1000)
+                chunk_results = _search_release_chunk(page, chunk_from_str, chunk_to_str)
+                parsed = _parse_release_results(chunk_results, park_names_set, target_dates)
+                all_results.extend(parsed)
+                logger.info("  この期間: %d件（累計: %d件）", len(parsed), len(all_results))
 
-            panel = page.get_by_role("tabpanel", name="日時から探す")
-
-            # テニスをチェック
-            logger.info("  「テニス」を選択...")
-            panel.get_by_label("テニス", exact=True).check(force=True)
-            page.wait_for_timeout(500)
-
-            # 利用期間
-            logger.info("  利用期間: %s ～ %s", date_from_str, date_to_str)
-            textboxes = panel.get_by_role("textbox")
-            textboxes.nth(0).fill(date_from_str)
-            page.wait_for_timeout(300)
-            textboxes.nth(1).fill(date_to_str)
-            page.wait_for_timeout(300)
-
-            # 利用時間: 9:00 ～ 21:00
-            selects = panel.get_by_role("combobox")
-            selects.nth(0).select_option("9:00")
-            selects.nth(1).select_option("21:00")
-            page.wait_for_timeout(200)
-
-            # 「開放待ち」ラジオ
-            logger.info("  「開放待ち」を選択...")
-            panel.get_by_label("開放待ち").click(force=True)
-            page.wait_for_timeout(300)
-
-            # 検索
-            logger.info("  検索実行...")
-            panel.get_by_role("button", name="検索").first.click()
-            page.wait_for_timeout(10000)
-
-            # モーダルを閉じる（上限超過の警告など）
-            close_btn = page.locator("button:has-text('閉じる')")
-            if close_btn.count() > 0 and close_btn.first.is_visible():
-                close_btn.first.click(force=True)
-                page.wait_for_timeout(1000)
-
-            # 「さらに読み込む」で全件取得
-            for _ in range(10):
-                load_more = page.locator("button:has-text('さらに読み込む')")
-                if load_more.count() > 0 and load_more.first.is_visible():
-                    load_more.first.click()
-                    page.wait_for_timeout(3000)
-                else:
-                    break
-
-            # 結果テキストをパース
-            body_text = page.inner_text("body")
-            results = _parse_release_results(body_text, park_names_set, target_dates)
-            logger.info("  開放待ち検索完了: %d件", len(results))
+                chunk_from = chunk_to + timedelta(days=1)
 
         except Exception as e:
             logger.error("開放待ち検索でエラー: %s", e, exc_info=True)
@@ -681,7 +633,63 @@ def run_release_scrape(
             page.close()
             browser.close()
 
-    return [asdict(s) for s in results]
+    logger.info("開放待ち検索完了（合計）: %d件", len(all_results))
+    return [asdict(s) for s in all_results]
+
+
+def _search_release_chunk(page, date_from: str, date_to: str) -> str:
+    """1チャンク分の開放待ち検索を実行し、結果テキストを返す"""
+    # トップページ
+    page.goto(config.BASE_URL, wait_until="networkidle")
+    page.wait_for_timeout(3000)
+
+    # 「日時から探す」タブ
+    page.get_by_role("tab", name="日時から探す").click()
+    page.wait_for_timeout(1000)
+
+    panel = page.get_by_role("tabpanel", name="日時から探す")
+
+    # テニスをチェック
+    panel.get_by_label("テニス", exact=True).check(force=True)
+    page.wait_for_timeout(500)
+
+    # 利用期間
+    textboxes = panel.get_by_role("textbox")
+    textboxes.nth(0).fill(date_from)
+    page.wait_for_timeout(300)
+    textboxes.nth(1).fill(date_to)
+    page.wait_for_timeout(300)
+
+    # 利用時間: 9:00 ～ 21:00
+    selects = panel.get_by_role("combobox")
+    selects.nth(0).select_option("9:00")
+    selects.nth(1).select_option("21:00")
+    page.wait_for_timeout(200)
+
+    # 「開放待ち」ラジオ
+    panel.get_by_label("開放待ち").click(force=True)
+    page.wait_for_timeout(300)
+
+    # 検索
+    panel.get_by_role("button", name="検索").first.click()
+    page.wait_for_timeout(10000)
+
+    # モーダルを閉じる
+    close_btn = page.locator("button:has-text('閉じる')")
+    if close_btn.count() > 0 and close_btn.first.is_visible():
+        close_btn.first.click(force=True)
+        page.wait_for_timeout(1000)
+
+    # 「さらに読み込む」で全件取得
+    for _ in range(10):
+        load_more = page.locator("button:has-text('さらに読み込む')")
+        if load_more.count() > 0 and load_more.first.is_visible():
+            load_more.first.click()
+            page.wait_for_timeout(3000)
+        else:
+            break
+
+    return page.inner_text("body")
 
 
 def _parse_release_results(
@@ -733,7 +741,18 @@ def _parse_release_results(
         if target_set and date_str not in target_set:
             continue
 
-        # 開放タイプ判定（開放日時が今日なら当日開放、明日なら翌日開放）
+        # 平日/休日フィルタ（平日は19時以降のみ）
+        try:
+            dt = datetime(year, month, day)
+            is_weekend = dt.weekday() >= 5  # 土日
+            start_hour = int(time_from.split(":")[0])
+            min_hour = config.WEEKEND_MIN_HOUR if is_weekend else config.WEEKDAY_MIN_HOUR
+            if start_hour < min_hour:
+                continue
+        except Exception:
+            pass
+
+        # 開放タイプ判定
         slot_type = "next_day"  # デフォルトは翌日開放
 
         time_label = f"{time_from}-{time_to}"
