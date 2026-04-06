@@ -398,13 +398,28 @@ async def debug_check():
     creds = load_credentials()
     lines = [f"creds: {'OK' if creds else 'None'}"]
     if creds:
+        lines.append(f"token (先頭30): {creds.token[:30] if creds.token else 'None'}...")
+        lines.append(f"expired: {creds.expired}")
+        lines.append(f"valid: {creds.valid}")
+        lines.append(f"scopes: {creds.scopes}")
         try:
+            from googleapiclient.discovery import build
+            service = build("calendar", "v3", credentials=creds)
+            # カレンダー一覧
+            cal_list = service.calendarList().list().execute()
+            cals = cal_list.get("items", [])
+            lines.append(f"calendars: {len(cals)}件")
+            for c in cals[:5]:
+                lines.append(f"  - {c.get('summary', '?')} (id: {c['id'][:30]}...)")
+            # イベント取得
             events = list_events_for_month(creds, 2026, 4)
-            lines.append(f"events: {len(events)}件")
-            for e in events[:5]:
+            lines.append(f"events (2026-04): {len(events)}件")
+            for e in events[:10]:
                 lines.append(f"  {e['date']} {e.get('start_time','')} {e['summary']}")
         except Exception as e:
-            lines.append(f"events error: {e}")
+            import traceback
+            lines.append(f"API error: {e}")
+            lines.append(traceback.format_exc().replace('\n', '<br>'))
     try:
         slots = database.get_slots_for_date("2026-04-16")
         lines.append(f"slots for 4/16: {len(slots)}件")
