@@ -438,6 +438,18 @@ class TennisChecker:
 
     def _parse_detail_from_text(self, text, slot_type: str = "normal"):
         """詳細ページのテキストをパースしてスロットを抽出（複数施設対応）"""
+        # 詳細ページ内に当日開放/翌日開放のテキストがあるか検出
+        if "当日開放" in text:
+            logger.info("      ** 詳細ページ内に「当日開放」を検出")
+            slot_type = "same_day"
+        elif "翌日開放" in text:
+            logger.info("      ** 詳細ページ内に「翌日開放」を検出")
+            slot_type = "next_day"
+
+        # 詳細ページの先頭500文字をログ（デバッグ用）
+        preview = text[:500].replace('\n', ' | ')
+        logger.info("      詳細テキスト(先頭500): %s", preview)
+
         lines = [l.strip() for l in text.split('\n')]
 
         current_park = None
@@ -480,9 +492,13 @@ class TennisChecker:
 
             if current_court and current_date:
                 if line == '空きなし' or line == '休館日':
-                    slot_values.append(('unavailable', line))
+                    slot_values.append(('unavailable', line, slot_type))
+                elif '当日開放' in line:
+                    slot_values.append(('available', line, 'same_day'))
+                elif '翌日開放' in line:
+                    slot_values.append(('available', line, 'next_day'))
                 elif re.match(r'\d+時から\d+時まで', line):
-                    slot_values.append(('available', line))
+                    slot_values.append(('available', line, slot_type))
                 if len(slot_values) == 6:
                     self._process_court_data(current_park, current_date, current_dow, current_court, slot_values, slot_type)
                     slot_values = []
@@ -502,16 +518,22 @@ class TennisChecker:
         min_hour = config.WEEKEND_MIN_HOUR if is_weekend else config.WEEKDAY_MIN_HOUR
         date_str = date.strftime("%Y-%m-%d")
 
-        for idx, (status, text) in enumerate(slot_values):
+        for idx, slot_val in enumerate(slot_values):
             if idx >= len(TIME_BLOCKS):
                 break
+            # 3要素タプル (status, text, per_slot_type) または 旧形式の2要素
+            if len(slot_val) == 3:
+                status, text, per_slot_type = slot_val
+            else:
+                status, text = slot_val
+                per_slot_type = slot_type
             start_hour, time_label = TIME_BLOCKS[idx]
             if start_hour < min_hour:
                 continue
             if status == 'available':
                 slot = AvailableSlot(
                     park=park_name, date=date_str, day_of_week=dow,
-                    court=court, time=time_label, slot_type=slot_type,
+                    court=court, time=time_label, slot_type=per_slot_type,
                 )
                 if not any(
                     s.park == slot.park and s.date == slot.date
