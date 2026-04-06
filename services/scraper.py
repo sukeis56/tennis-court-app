@@ -330,9 +330,21 @@ class TennisChecker:
             logger.info("    空きなし")
             return
 
+        # まず全セルのテキストとタイプをログに記録
+        available_tds = page.locator(self.AVAILABLE_SELECTOR)
+        initial_total = available_tds.count()
+        for i in range(min(initial_total, 10)):  # 最初の10件だけログ
+            try:
+                td = available_tds.nth(i)
+                if td.is_visible():
+                    cell_text = td.inner_text().strip().replace('\n', ' ')
+                    cell_type = self._classify_cell(td)
+                    logger.info("    セル[%d]: '%s' → %s", i, cell_text[:40], cell_type)
+            except Exception:
+                pass
+
         # タイプごとに処理（毎回セルを再スキャンしてインデックスを取得）
-        for slot_type, keyword in [("normal", None), ("same_day", "当日開放"), ("next_day", "翌日開放")]:
-            # 毎回再スキャンしてインデックスを特定（DOM変化に対応）
+        for slot_type in ["normal", "same_day", "next_day"]:
             available_tds = page.locator(self.AVAILABLE_SELECTOR)
             current_total = available_tds.count()
             indices = []
