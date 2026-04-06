@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 import config
 import database
-from services.scraper import run_scrape
+from services.scraper import run_scrape, run_release_scrape
 from services.line_notify import send_line_notification
 from services.google_auth import load_credentials, get_flow, save_credentials, clear_credentials
 from services.google_calendar import list_events_for_month
@@ -91,15 +91,25 @@ async def run_scrape_task(
 
     try:
         logger.info("スクレイプタスク開始 (施設=%s, 日付=%s)", parks, target_dates)
+
+        # 通常の空きスクレイプ
         slots = await asyncio.to_thread(run_scrape, parks, None, target_dates)
-        database.save_slots(slots)
-        database.log_scrape_finish(log_id, "success", len(slots))
+        logger.info("通常スクレイプ完了: %d件", len(slots))
+
+        # 開放待ちスクレイプ
+        release_slots = await asyncio.to_thread(run_release_scrape, parks, None, target_dates)
+        logger.info("開放待ちスクレイプ完了: %d件", len(release_slots))
+
+        # マージ（重複除去）
+        all_slots = slots + release_slots
+        database.save_slots(all_slots)
+        database.log_scrape_finish(log_id, "success", len(all_slots))
         scraper_state["last_run"] = datetime.now(JST)
-        logger.info("スクレイプ完了: %d件", len(slots))
+        logger.info("スクレイプ完了（合計）: %d件", len(all_slots))
 
         # LINE通知
         if notify:
-            await send_line_notification(slots)
+            await send_line_notification(all_slots)
     except Exception as e:
         logger.error("スクレイプ失敗: %s", e, exc_info=True)
         database.log_scrape_finish(log_id, "error", error_message=str(e))

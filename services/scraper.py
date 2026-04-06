@@ -575,3 +575,178 @@ def run_scrape(
         results = [s for s in results if s.date in target_set]
 
     return [asdict(s) for s in results]
+
+
+def run_release_scrape(
+    parks: list[str] | None = None,
+    days_ahead: int | None = None,
+    target_dates: list[str] | None = None,
+) -> list[dict]:
+    """開放待ち検索: 「日時から探す」→「開放待ち」で検索して結果を返す"""
+    if parks is None:
+        parks = config.ALL_PARKS
+    if days_ahead is None:
+        days_ahead = config.SCRAPE_DAYS_AHEAD
+
+    from datetime import timedelta
+    today = datetime.now().date()
+
+    if target_dates:
+        max_date = max(datetime.strptime(d, "%Y-%m-%d").date() for d in target_dates)
+        date_from = today + timedelta(days=1)
+        date_to = max_date
+    else:
+        date_from = today + timedelta(days=1)
+        date_to = today + timedelta(days=days_ahead)
+
+    date_from_str = date_from.strftime("%Y-%m-%d")
+    date_to_str = date_to.strftime("%Y-%m-%d")
+
+    logger.info("開放待ち検索: %s ～ %s, 施設=%s", date_from_str, date_to_str, parks)
+
+    results = []
+    park_names_set = set(parks)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_context(
+            viewport={"width": 1280, "height": 900}, locale="ja-JP"
+        ).new_page()
+        page.set_default_timeout(60000)
+
+        try:
+            # トップページ
+            page.goto(config.BASE_URL, wait_until="networkidle")
+            page.wait_for_timeout(3000)
+
+            # 「日時から探す」タブをクリック
+            logger.info("  「日時から探す」タブを選択...")
+            page.get_by_role("tab", name="日時から探す").click()
+            page.wait_for_timeout(1000)
+
+            panel = page.get_by_role("tabpanel", name="日時から探す")
+
+            # テニスをチェック
+            logger.info("  「テニス」を選択...")
+            panel.get_by_label("テニス", exact=True).check(force=True)
+            page.wait_for_timeout(500)
+
+            # 利用期間
+            logger.info("  利用期間: %s ～ %s", date_from_str, date_to_str)
+            textboxes = panel.get_by_role("textbox")
+            textboxes.nth(0).fill(date_from_str)
+            page.wait_for_timeout(300)
+            textboxes.nth(1).fill(date_to_str)
+            page.wait_for_timeout(300)
+
+            # 利用時間: 9:00 ～ 21:00
+            selects = panel.get_by_role("combobox")
+            selects.nth(0).select_option("9:00")
+            selects.nth(1).select_option("21:00")
+            page.wait_for_timeout(200)
+
+            # 「開放待ち」ラジオ
+            logger.info("  「開放待ち」を選択...")
+            panel.get_by_label("開放待ち").click(force=True)
+            page.wait_for_timeout(300)
+
+            # 検索
+            logger.info("  検索実行...")
+            panel.get_by_role("button", name="検索").first.click()
+            page.wait_for_timeout(10000)
+
+            # モーダルを閉じる（上限超過の警告など）
+            close_btn = page.locator("button:has-text('閉じる')")
+            if close_btn.count() > 0 and close_btn.first.is_visible():
+                close_btn.first.click(force=True)
+                page.wait_for_timeout(1000)
+
+            # 「さらに読み込む」で全件取得
+            for _ in range(10):
+                load_more = page.locator("button:has-text('さらに読み込む')")
+                if load_more.count() > 0 and load_more.first.is_visible():
+                    load_more.first.click()
+                    page.wait_for_timeout(3000)
+                else:
+                    break
+
+            # 結果テキストをパース
+            body_text = page.inner_text("body")
+            results = _parse_release_results(body_text, park_names_set, target_dates)
+            logger.info("  開放待ち検索完了: %d件", len(results))
+
+        except Exception as e:
+            logger.error("開放待ち検索でエラー: %s", e, exc_info=True)
+        finally:
+            page.close()
+            browser.close()
+
+    return [asdict(s) for s in results]
+
+
+def _parse_release_results(
+    text: str,
+    park_names: set[str],
+    target_dates: list[str] | None = None,
+) -> list[AvailableSlot]:
+    """開放待ち一覧のテキストをパースしてAvailableSlotリストを返す"""
+    target_set = set(target_dates) if target_dates else None
+    results = []
+    DAY_NAMES = {"月": "月", "火": "火", "水": "水", "木": "木", "金": "金", "土": "土", "日": "日"}
+
+    for line in text.split("\n"):
+        # 行フォーマット: No\t施設名\tコート名\t令和X年M月D日(曜)\t時間帯\t開放日時
+        match = re.match(
+            r'\d+\t(.+?)\t(.+?)\t令和\d+年(\d+)月(\d+)日\((.)\)\t(\d+:\d+)～(\d+:\d+)\t(.+)',
+            line.strip()
+        )
+        if not match:
+            continue
+
+        facility = match.group(1).strip()
+        court = match.group(2).strip()
+        month = int(match.group(3))
+        day = int(match.group(4))
+        dow = match.group(5)
+        time_from = match.group(6)
+        time_to = match.group(7)
+        release_info = match.group(8).strip()
+
+        # 年を推定
+        now = datetime.now()
+        year = now.year
+        if month < now.month:
+            year += 1
+        date_str = f"{year:04d}-{month:02d}-{day:02d}"
+
+        # 施設フィルタ
+        matched_park = None
+        for park_name in park_names:
+            park_info = config.PARKS.get(park_name)
+            if park_info and (park_info["search"] in facility or park_name in facility):
+                matched_park = park_name
+                break
+        if not matched_park:
+            continue
+
+        # 日付フィルタ
+        if target_set and date_str not in target_set:
+            continue
+
+        # 開放タイプ判定（開放日時が今日なら当日開放、明日なら翌日開放）
+        slot_type = "next_day"  # デフォルトは翌日開放
+
+        time_label = f"{time_from}-{time_to}"
+
+        slot = AvailableSlot(
+            park=matched_park,
+            date=date_str,
+            day_of_week=dow,
+            court=court,
+            time=time_label,
+            slot_type=slot_type,
+        )
+        results.append(slot)
+        logger.info("    開放待ち: %s %s(%s) %s %s", matched_park, date_str, dow, court, time_label)
+
+    return results
