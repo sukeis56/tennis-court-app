@@ -320,7 +320,10 @@ async def day_detail(request: Request, date_str: str, park: str = ""):
         if park not in by_park:
             by_park[park] = {"courts": {}, "count": 0}
         by_park[park]["count"] += 1
-        by_park[park]["courts"].setdefault(court, []).append(s["time"])
+        by_park[park]["courts"].setdefault(court, []).append({
+            "time": s["time"],
+            "slot_type": s.get("slot_type", "normal"),
+        })
 
     # Googleカレンダーのイベント
     cal_events = []

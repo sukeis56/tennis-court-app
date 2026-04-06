@@ -35,9 +35,15 @@ def init_db():
                 day_of_week TEXT NOT NULL,
                 court TEXT NOT NULL,
                 time TEXT NOT NULL,
+                slot_type TEXT NOT NULL DEFAULT 'normal',
                 scraped_at TEXT NOT NULL
             )
         """)
+        # 既存DBへのマイグレーション
+        try:
+            conn.execute("ALTER TABLE slots ADD COLUMN slot_type TEXT NOT NULL DEFAULT 'normal'")
+        except Exception:
+            pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS scrape_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,15 +66,15 @@ def save_slots(slots: list[dict]):
         conn.execute("DELETE FROM slots")
         for s in slots:
             conn.execute(
-                "INSERT INTO slots (park, date, day_of_week, court, time, scraped_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (s["park"], s["date"], s["day_of_week"], s["court"], s["time"], now),
+                "INSERT INTO slots (park, date, day_of_week, court, time, slot_type, scraped_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (s["park"], s["date"], s["day_of_week"], s["court"], s["time"], s.get("slot_type", "normal"), now),
             )
 
 
 def get_slots_for_date(date_str: str) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT park, date, day_of_week, court, time FROM slots WHERE date = ? ORDER BY park, court, time",
+            "SELECT park, date, day_of_week, court, time, slot_type FROM slots WHERE date = ? ORDER BY park, court, time",
             (date_str,),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -105,12 +111,12 @@ def get_slots_for_date_filtered(date_str: str, parks: list[str] | None = None) -
         if parks:
             placeholders = ",".join("?" for _ in parks)
             rows = conn.execute(
-                f"SELECT park, date, day_of_week, court, time FROM slots WHERE date = ? AND park IN ({placeholders}) ORDER BY park, court, time",
+                f"SELECT park, date, day_of_week, court, time, slot_type FROM slots WHERE date = ? AND park IN ({placeholders}) ORDER BY park, court, time",
                 (date_str, *parks),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT park, date, day_of_week, court, time FROM slots WHERE date = ? ORDER BY park, court, time",
+                "SELECT park, date, day_of_week, court, time, slot_type FROM slots WHERE date = ? ORDER BY park, court, time",
                 (date_str,),
             ).fetchall()
         return [dict(r) for r in rows]

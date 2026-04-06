@@ -22,6 +22,7 @@ class AvailableSlot:
     day_of_week: str
     court: str
     time: str
+    slot_type: str = "normal"  # "normal", "same_day", "next_day"
 
 
 class TennisChecker:
@@ -245,10 +246,16 @@ class TennisChecker:
         except Exception:
             pass
 
+    # 空きセル検出用ロケーター（当日開放・翌日開放も含む）
+    AVAILABLE_SELECTOR = (
+        "td:has-text('一部空き'), td:has-text('空きあり'), "
+        "td:has-text('当日開放'), td:has-text('翌日開放')"
+    )
+
     def _deselect_all(self, page, indices):
         if not indices:
             return
-        available_tds = page.locator("td:has-text('一部空き'), td:has-text('空きあり')")
+        available_tds = page.locator(self.AVAILABLE_SELECTOR)
         current_count = available_tds.count()
         for idx in indices:
             try:
@@ -301,9 +308,21 @@ class TennisChecker:
                 logger.info("    「次の期間」なし → 終了")
                 break
 
+    def _classify_cell(self, td) -> str:
+        """セルのテキストからスロットタイプを判定"""
+        try:
+            text = td.inner_text()
+            if "当日開放" in text:
+                return "same_day"
+            if "翌日開放" in text:
+                return "next_day"
+        except Exception:
+            pass
+        return "normal"
+
     def _process_one_week(self, page):
-        """1週間分の空きセルを全て処理（日付フィルタは最終結果で行う）"""
-        available_tds = page.locator("td:has-text('一部空き'), td:has-text('空きあり')")
+        """1週間分の空きセルをタイプ別に処理"""
+        available_tds = page.locator(self.AVAILABLE_SELECTOR)
         total = available_tds.count()
         logger.info("    空きセル: %d件", total)
 
@@ -311,31 +330,54 @@ class TennisChecker:
             logger.info("    空きなし")
             return
 
+        # セルをタイプ別に分類
+        type_indices = {"normal": [], "same_day": [], "next_day": []}
+        for i in range(total):
+            try:
+                td = available_tds.nth(i)
+                if td.is_visible():
+                    slot_type = self._classify_cell(td)
+                    type_indices[slot_type].append(i)
+            except Exception:
+                type_indices["normal"].append(i)
+
+        for stype, count in type_indices.items():
+            if count:
+                logger.info("      %s: %d件", stype, len(count))
+
+        # タイプごとに別バッチで処理
+        for slot_type, indices in type_indices.items():
+            if not indices:
+                continue
+            logger.info("    [%s] %d件を処理", slot_type, len(indices))
+            self._process_cells_by_indices(page, indices, slot_type)
+
+    def _process_cells_by_indices(self, page, indices: list[int], slot_type: str):
+        """指定インデックスのセルをバッチ処理"""
         processed = 0
         batch_num = 0
         prev_indices = []
 
-        while processed < total:
+        while processed < len(indices):
             batch_num += 1
-            batch_end = min(processed + config.BATCH_SIZE, total)
-            logger.info("    [バッチ%d] %d~%d件目 (全%d件)", batch_num, processed + 1, batch_end, total)
+            batch_targets = indices[processed:processed + config.BATCH_SIZE]
+            logger.info("      [バッチ%d] %d件", batch_num, len(batch_targets))
 
             if prev_indices:
                 self._deselect_all(page, prev_indices)
 
-            available_tds = page.locator("td:has-text('一部空き'), td:has-text('空きあり')")
-            current_count = available_tds.count()
+            available_tds = page.locator(self.AVAILABLE_SELECTOR)
 
             clicked = 0
             current_indices = []
-            for i in range(processed, min(processed + config.BATCH_SIZE, current_count)):
+            for idx in batch_targets:
                 try:
-                    td = available_tds.nth(i)
+                    td = available_tds.nth(idx)
                     if td.is_visible():
                         td.click()
                         page.wait_for_timeout(150)
                         clicked += 1
-                        current_indices.append(i)
+                        current_indices.append(idx)
                 except Exception:
                     pass
 
@@ -359,7 +401,7 @@ class TennisChecker:
                 full_text = ""
 
             if len(full_text) > 100:
-                self._parse_detail_from_text(full_text)
+                self._parse_detail_from_text(full_text, slot_type=slot_type)
 
             btns2 = page.locator("button")
             for i in range(btns2.count()):
@@ -370,7 +412,7 @@ class TennisChecker:
             page.wait_for_timeout(3000)
 
             prev_indices = current_indices
-            processed += clicked
+            processed += len(batch_targets)
 
         if prev_indices:
             self._deselect_all(page, prev_indices)
@@ -382,7 +424,7 @@ class TennisChecker:
                 return park_name
         return "不明な施設"
 
-    def _parse_detail_from_text(self, text):
+    def _parse_detail_from_text(self, text, slot_type: str = "normal"):
         """詳細ページのテキストをパースしてスロットを抽出（複数施設対応）"""
         lines = [l.strip() for l in text.split('\n')]
 
@@ -396,14 +438,13 @@ class TennisChecker:
             # 施設名を検出
             for park_name, park_info in config.PARKS.items():
                 if park_name in line or park_info["search"] in line:
-                    # 日付やコートの行でない場合のみ施設名として認識
                     if not re.search(r'\d{4}年', line) and 'テニスコート' not in line:
                         current_park = park_name
                         break
 
             date_match = re.search(r'(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日\s*\((.)\)', line)
             if date_match:
-                self._process_court_data(current_park, current_date, current_dow, current_court, slot_values)
+                self._process_court_data(current_park, current_date, current_dow, current_court, slot_values, slot_type)
                 slot_values = []
                 current_court = None
                 y, m, d, dow = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3)), date_match.group(4)
@@ -416,7 +457,7 @@ class TennisChecker:
 
             court_match = re.search(r'テニスコート\s*[０-９\d]+', line)
             if court_match and current_date:
-                self._process_court_data(current_park, current_date, current_dow, current_court, slot_values)
+                self._process_court_data(current_park, current_date, current_dow, current_court, slot_values, slot_type)
                 slot_values = []
                 court_raw = court_match.group(0)
                 num_match = re.search(r'[０-９\d]+', court_raw)
@@ -431,13 +472,13 @@ class TennisChecker:
                 elif re.match(r'\d+時から\d+時まで', line):
                     slot_values.append(('available', line))
                 if len(slot_values) == 6:
-                    self._process_court_data(current_park, current_date, current_dow, current_court, slot_values)
+                    self._process_court_data(current_park, current_date, current_dow, current_court, slot_values, slot_type)
                     slot_values = []
                     current_court = None
 
-        self._process_court_data(current_park, current_date, current_dow, current_court, slot_values)
+        self._process_court_data(current_park, current_date, current_dow, current_court, slot_values, slot_type)
 
-    def _process_court_data(self, park_name, date, dow, court, slot_values):
+    def _process_court_data(self, park_name, date, dow, court, slot_values, slot_type: str = "normal"):
         if not date or not court or not slot_values:
             return
 
@@ -458,7 +499,7 @@ class TennisChecker:
             if status == 'available':
                 slot = AvailableSlot(
                     park=park_name, date=date_str, day_of_week=dow,
-                    court=court, time=time_label,
+                    court=court, time=time_label, slot_type=slot_type,
                 )
                 if not any(
                     s.park == slot.park and s.date == slot.date

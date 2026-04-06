@@ -30,7 +30,13 @@
                     <span class="court-name">{{ court }}</span>
                     <div class="time-slots">
                         {% for t in times %}
-                            <span class="time-slot">{{ t }}</span>
+                            {% if t.slot_type == 'same_day' %}
+                                <span class="time-slot time-slot-release" title="当日開放">🔓{{ t.time }}</span>
+                            {% elif t.slot_type == 'next_day' %}
+                                <span class="time-slot time-slot-release" title="翌日開放">🔓{{ t.time }}</span>
+                            {% else %}
+                                <span class="time-slot">{{ t.time }}</span>
+                            {% endif %}
                         {% endfor %}
                     </div>
                 </div>

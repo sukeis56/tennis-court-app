@@ -18,7 +18,12 @@ def build_message(slots: list[dict]) -> str:
         park = s["park"]
         by_park.setdefault(park, {})
         date_key = f"{s['date']}({s['day_of_week']})"
-        by_park[park].setdefault(date_key, []).append(f"{s['time']} {s['court']}")
+        type_marker = ""
+        if s.get("slot_type") == "same_day":
+            type_marker = "[当日開放]"
+        elif s.get("slot_type") == "next_day":
+            type_marker = "[翌日開放]"
+        by_park[park].setdefault(date_key, []).append(f"{type_marker}{s['time']} {s['court']}")
 
     lines = [f"テニスコート空き {len(slots)}件"]
 

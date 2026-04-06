@@ -720,6 +720,18 @@ header h1 {
     color: var(--text-muted);
 }
 
+/* === Release Slots (当日開放 / 翌日開放) === */
+.time-slot-release {
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.legend-dot-release {
+    background: #f59e0b;
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+}
+
 /* === Booking Link === */
 .booking-link {
     padding: 20px 0;
