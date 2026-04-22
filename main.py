@@ -80,8 +80,11 @@ async def run_scrape_task(
     notify: bool = False,
     parks: list[str] | None = None,
     target_dates: list[str] | None = None,
+    search_type: str = "both",
 ):
-    """asyncio.to_thread でスクレイパーを実行し、結果をDB保存"""
+    """asyncio.to_thread でスクレイパーを実行し、結果をDB保存
+    search_type: "both" | "normal" | "release"
+    """
     if scraper_state["running"]:
         logger.info("スクレイプ既に実行中、スキップ")
         return
@@ -90,18 +93,27 @@ async def run_scrape_task(
     log_id = database.log_scrape_start()
 
     try:
-        logger.info("スクレイプタスク開始 (施設=%s, 日付=%s)", parks, target_dates)
+        logger.info("スクレイプタスク開始 (施設=%s, 日付=%s, タイプ=%s)", parks, target_dates, search_type)
+
+        all_slots = []
 
         # 通常の空きスクレイプ
-        slots = await asyncio.to_thread(run_scrape, parks, None, target_dates)
-        logger.info("通常スクレイプ完了: %d件", len(slots))
+        if search_type in ("both", "normal"):
+            slots = await asyncio.to_thread(run_scrape, parks, None, target_dates)
+            logger.info("通常スクレイプ完了: %d件", len(slots))
+            all_slots.extend(slots)
 
-        # 開放待ちスクレイプ
-        release_slots = await asyncio.to_thread(run_release_scrape, parks, None, target_dates)
-        logger.info("開放待ちスクレイプ完了: %d件", len(release_slots))
+        # 開放待ちスクレイプ（翌月末まで）
+        if search_type in ("both", "release"):
+            today = datetime.now(JST).date()
+            nm_year = today.year + (1 if today.month == 12 else 0)
+            nm_month = 1 if today.month == 12 else today.month + 1
+            last_day = calendar.monthrange(nm_year, nm_month)[1]
+            release_days_ahead = (today.replace(year=nm_year, month=nm_month, day=last_day) - today).days + 1
+            release_slots = await asyncio.to_thread(run_release_scrape, parks, release_days_ahead, target_dates)
+            logger.info("開放待ちスクレイプ完了: %d件 (翌月末まで %d日)", len(release_slots), release_days_ahead)
+            all_slots.extend(release_slots)
 
-        # マージ（重複除去）
-        all_slots = slots + release_slots
         database.save_slots(all_slots)
         database.log_scrape_finish(log_id, "success", len(all_slots))
         scraper_state["last_run"] = datetime.now(JST)
@@ -367,16 +379,18 @@ async def manual_scrape(
     request: Request,
     parks: list[str] = Form(default=[]),
     dates: list[str] = Form(default=[]),
+    search_type: str = Form(default="both"),
 ):
     if not scraper_state["running"]:
-        # フォームからの施設選択（空ならALL）
         selected_parks = parks if parks else None
-        # フォームからの日付選択（空ならNone = 全期間）
         target_dates = [d for d in dates if d] if dates else None
+        if search_type not in ("both", "normal", "release"):
+            search_type = "both"
         asyncio.create_task(run_scrape_task(
             notify=True,
             parks=selected_parks,
             target_dates=target_dates,
+            search_type=search_type,
         ))
     return templates.TemplateResponse(request=request, name="partials/status_bar.html", context={
         "last_scrape": database.get_last_scrape(),

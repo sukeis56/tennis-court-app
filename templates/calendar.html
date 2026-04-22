@@ -48,6 +48,25 @@
         </div>
     </div>
 
+    <!-- 検索タイプ選択 -->
+    <div class="search-section">
+        <h3 class="search-label">検索タイプ</h3>
+        <div class="search-type-radios">
+            <label class="search-type-radio">
+                <input type="radio" name="search_type" value="both" checked>
+                <span>通常 ＋ 開放待ち</span>
+            </label>
+            <label class="search-type-radio">
+                <input type="radio" name="search_type" value="normal">
+                <span>通常のみ</span>
+            </label>
+            <label class="search-type-radio">
+                <input type="radio" name="search_type" value="release">
+                <span>開放待ちのみ</span>
+            </label>
+        </div>
+    </div>
+
     <!-- 検索開始ボタン -->
     <button type="submit" class="btn btn-primary btn-search">検索開始</button>
 </form>

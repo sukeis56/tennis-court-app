@@ -277,6 +277,37 @@ header h1 {
     box-shadow: 0 0 0 1px var(--tennis-border);
 }
 
+.search-type-radios {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.search-type-radio {
+    cursor: pointer;
+}
+
+.search-type-radio input[type="radio"] { display: none; }
+
+.search-type-radio span {
+    display: inline-block;
+    padding: 6px 16px;
+    border: 1px solid var(--border-strong);
+    border-radius: 20px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    background: var(--surface2);
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.search-type-radio input[type="radio"]:checked + span {
+    background: var(--primary-dim);
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: 0 0 0 1px rgba(74, 158, 255, 0.3);
+}
+
 .date-picker-area {
     display: flex;
     flex-wrap: wrap;
