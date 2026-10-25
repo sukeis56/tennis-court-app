@@ -73,7 +73,8 @@ Google は Mac の `credentials.json`（OAuth クライアント）と `token.js
   - **Google 予定は取れない**。token.json の client secret が無効（`invalid_client`）。OAuth クライアントの作り直しと再ログインが必要。
   - 開放待ち検索も動作確認済み。
 - Mac にデプロイ済み（8005、外部から表示 OK）。Mac 上で三ツ沢・10/31 の検索が成功（開放待ち 2 枠）。
-- 残り（ユーザー作業が必要）：①Mac で cron 登録 ②Mac に `.env`（LINE トークン）を置く ③Google OAuth クライアントを作り直して `credentials.json` を Mac に置き、画面からログイン。
+- cron 登録済み（2026-10-25、自動デプロイ動作確認済み）。
+- 残り：①Mac に `.env`（LINE トークン）を置く ②Google OAuth クライアントを作り直す（リダイレクト URI は `http://localhost:8005/auth/callback`。https でない外部 URL は Google が許可しないため、PC でログイン → token.json を Mac にコピー。公開ステータスは「本番環境」に）。
 
 ## 詳しい資料
 - docs/progress.md：作業の経緯（新しい順）
