@@ -46,7 +46,9 @@ class TennisChecker:
                 self._navigate_by_purpose(page, parks)
                 self._process_all_weeks(page, days_ahead)
             except Exception as e:
+                # 画面遷移の失敗は 0件の「成功」にせず、エラーとして記録させる
                 logger.error("スクレイプでエラー: %s", e, exc_info=True)
+                raise
             finally:
                 page.close()
                 browser.close()
@@ -202,17 +204,10 @@ class TennisChecker:
         checked_count = 0
         for i in range(checkbox_count):
             cb = checkboxes.nth(i)
-            if not cb.is_visible():
-                continue
-
-            # チェックボックスの親要素や近くのテキストを取得
+            # チェックボックスを囲む div の文字（＝施設名）を取得
+            # ※ custom-control-input は透明なので is_visible() では判定しない
             try:
-                # 親の行やラベルのテキストを取得
-                parent = cb.locator("xpath=ancestor::*[self::label or self::div or self::tr or self::li][1]")
-                if parent.count() > 0:
-                    parent_text = parent.first.inner_text()
-                else:
-                    parent_text = ""
+                parent_text = cb.evaluate("e => (e.closest('div,li,tr,label') || e).innerText || ''")
             except Exception:
                 parent_text = ""
 
@@ -220,20 +215,16 @@ class TennisChecker:
             for park_name in parks:
                 search_key = config.PARKS[park_name]["search"]
                 if search_key in parent_text:
-                    cb.click(force=True)
-                    page.wait_for_timeout(300)
+                    if not cb.is_checked():
+                        cb.check(force=True)
+                        page.wait_for_timeout(300)
                     checked_count += 1
                     logger.info("    ✓ %s を選択", park_name)
                     break
 
         if checked_count == 0:
-            logger.warning("  対象施設が見つかりませんでした。全施設を選択します。")
-            # フォールバック: 見つからなければ全チェックボックスをON
-            for i in range(checkbox_count):
-                cb = checkboxes.nth(i)
-                if cb.is_visible():
-                    cb.click(force=True)
-                    page.wait_for_timeout(200)
+            # 全施設を選ぶと別施設の空きが混ざるので、ここで止める
+            raise RuntimeError("施設一覧で対象施設が見つかりません（サイトの画面が変わった可能性）")
         else:
             logger.info("  %d施設を選択", checked_count)
 
@@ -438,18 +429,7 @@ class TennisChecker:
 
     def _parse_detail_from_text(self, text, slot_type: str = "normal"):
         """詳細ページのテキストをパースしてスロットを抽出（複数施設対応）"""
-        # 詳細ページ内に当日開放/翌日開放のテキストがあるか検出
-        if "当日開放" in text:
-            logger.info("      ** 詳細ページ内に「当日開放」を検出")
-            slot_type = "same_day"
-        elif "翌日開放" in text:
-            logger.info("      ** 詳細ページ内に「翌日開放」を検出")
-            slot_type = "next_day"
-
-        # 詳細ページの先頭500文字をログ（デバッグ用）
-        preview = text[:500].replace('\n', ' | ')
-        logger.info("      詳細テキスト(先頭500): %s", preview)
-
+        # 当日開放/翌日開放はコマ単位で判定する（ページ全体で見ると凡例の「当日開放待ち」に反応してしまう）
         lines = [l.strip() for l in text.split('\n')]
 
         current_park = None
