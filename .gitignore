@@ -7,3 +7,5 @@ data/*.db-shm
 debug_*.png
 credentials.json
 token.json
+venv/
+*.log

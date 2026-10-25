@@ -1,5 +1,9 @@
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()  # Mac では .env に LINE のトークンを置く
+
 SCRAPE_DAYS_AHEAD = 28
 SCRAPE_HOUR_JST = 7  # 毎朝7時(JST)にスクレイプ
 DB_PATH = "data/tennis.db"
