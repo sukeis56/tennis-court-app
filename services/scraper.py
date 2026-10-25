@@ -692,7 +692,8 @@ def _parse_release_results(
             continue
 
         facility = match.group(1).strip()
-        court = match.group(2).strip()
+        # 通常検索と同じ表記（テニスコート1）に揃える
+        court = match.group(2).strip().translate(str.maketrans('０１２３４５６７８９', '0123456789'))
         month = int(match.group(3))
         day = int(match.group(4))
         dow = match.group(5)
@@ -732,8 +733,11 @@ def _parse_release_results(
         except Exception:
             pass
 
-        # 開放タイプ判定
-        slot_type = "next_day"  # デフォルトは翌日開放
+        # 開放タイプ判定: 開放日時（例「10月26日 7時00分」）が今日なら当日開放、それ以外は翌日開放
+        slot_type = "next_day"
+        release_match = re.match(r'(\d+)月(\d+)日', release_info)
+        if release_match and (int(release_match.group(1)), int(release_match.group(2))) == (now.month, now.day):
+            slot_type = "same_day"
 
         time_label = f"{time_from}-{time_to}"
 
