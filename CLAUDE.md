@@ -68,7 +68,7 @@ Google は Mac の `credentials.json`（OAuth クライアント）と `token.js
 - 2026-10-25：Mac（8005）で稼働開始。cron 自動デプロイ確認済み。
 - スクレイピング（通常・開放待ち）は今のサイトで動作確認済み。毎朝 7:00 に自動実行。
 - **LINE 通知は未設定**：Mac の `.env` に LINE_CHANNEL_ACCESS_TOKEN / LINE_USER_ID を置いて再起動が必要。
-- **Google 予定は表示されない**：client secret 無効。OAuth クライアント（ウェブ）を作り直す。リダイレクト URI は `http://localhost:8005/auth/callback`、公開ステータスは「本番環境」（テストだと 7 日で失効）。PC でログイン → token.json と credentials.json を Mac にコピー（Google は https でない外部 URI を許可しないため）。
+- **Google 予定は表示されない**：client secret 無効。OAuth クライアント（ウェブ）を作り直す。リダイレクト URI は `http://localhost:8005/auth/callback`、公開ステータスは「本番環境」（テストだと 7 日で失効）。ログインはこの Mac のブラウザで localhost から行う（Google は https でない外部 URI を許可しないため）。
 - 次の候補：ログインなしで誰でもスクレイプ実行できる点の対策、祝日を休日扱いにする。
 
 ## 詳しい資料
